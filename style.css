@@ -1,0 +1,58 @@
+:root {
+  --app-bg: #f3f6fb;
+  --success: #198754;
+  --error: #dc3545;
+  --neutral: #6c757d;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #e9f2ff, var(--app-bg));
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  align-items: center;
+}
+
+.app-card {
+  border-radius: 1rem;
+  background: #fff;
+}
+
+.reader-box {
+  width: 100%;
+  min-height: 260px;
+  overflow: hidden;
+  background: #000;
+}
+
+#reader video {
+  width: 100% !important;
+  height: auto !important;
+}
+
+.status-neutral {
+  color: var(--neutral);
+}
+
+.status-success {
+  color: var(--success);
+}
+
+.status-error {
+  color: var(--error);
+}
+
+@media (max-width: 480px) {
+  .reader-box {
+    min-height: 230px;
+  }
+}
