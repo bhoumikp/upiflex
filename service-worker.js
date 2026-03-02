@@ -1,4 +1,4 @@
-const CACHE_NAME = "upi-qr-extractor-v2";
+const CACHE_NAME = "upi-qr-extractor-v3";
 const OFFLINE_URL = "offline.html";
 
 const ASSETS = [
@@ -10,7 +10,8 @@ const ASSETS = [
   "offline.html",
   "vendor/bootstrap.min.css",
   "icons/icon-192.png",
-  "icons/icon-512.png"
+  "icons/icon-512.png",
+  "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
 ];
 
 self.addEventListener("install", (event) => {
@@ -38,11 +39,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const requestUrl = new URL(event.request.url);
-  if (requestUrl.origin !== self.location.origin) {
-    return;
-  }
-
   event.respondWith(
     caches.match(event.request).then(async (cachedResponse) => {
       if (cachedResponse) {
@@ -55,7 +51,8 @@ self.addEventListener("fetch", (event) => {
         cache.put(event.request, networkResponse.clone());
         return networkResponse;
       } catch {
-        if (event.request.mode === "navigate") {
+        const requestUrl = new URL(event.request.url);
+        if (event.request.mode === "navigate" || requestUrl.origin === self.location.origin) {
           const offlinePage = await caches.match(OFFLINE_URL);
           if (offlinePage) {
             return offlinePage;
