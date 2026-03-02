@@ -1,4 +1,4 @@
-const CACHE_NAME = "upi-qr-extractor-v3";
+const CACHE_NAME = "upi-qr-extractor-v4";
 const OFFLINE_URL = "offline.html";
 
 const ASSETS = [
@@ -11,7 +11,7 @@ const ASSETS = [
   "vendor/bootstrap.min.css",
   "icons/icon-192.png",
   "icons/icon-512.png",
-  "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
+  "vendor/html5-qrcode.min.js"
 ];
 
 self.addEventListener("install", (event) => {
