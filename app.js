@@ -13,14 +13,34 @@
     qrImageInput: document.getElementById("qrImageInput")
   };
 
-  let scanner = null;
+  const supportsBarcodeDetector = typeof window.BarcodeDetector !== "undefined";
+  const qrDetector = supportsBarcodeDetector ? new BarcodeDetector({ formats: ["qr_code"] }) : null;
+
+  let cameraStream = null;
+  let scanRafId = null;
   let isScanning = false;
+  let detectInProgress = false;
   let extractedUpiId = "";
+  let lastDetectTime = 0;
+
+  const video = document.createElement("video");
+  video.setAttribute("playsinline", "true");
+  video.setAttribute("autoplay", "true");
+  video.setAttribute("muted", "true");
+  video.className = "camera-video";
+  elements.reader.appendChild(video);
 
   const setStatus = (message, type = "neutral") => {
     elements.statusMessage.textContent = message;
     elements.statusMessage.classList.remove("status-neutral", "status-success", "status-error");
     elements.statusMessage.classList.add(`status-${type}`);
+  };
+
+  const resetResultBox = () => {
+    elements.resultBox.classList.add("d-none");
+    elements.resultBox.classList.remove("alert-danger", "alert-success");
+    elements.resultBox.innerHTML = '<div><strong>UPI ID:</strong> <span id="upiIdValue"></span></div>';
+    elements.upiIdValue = document.getElementById("upiIdValue");
   };
 
   const showResult = (upiId) => {
@@ -35,20 +55,12 @@
 
   const showInvalid = () => {
     extractedUpiId = "";
-    elements.upiIdValue.textContent = "";
     elements.resultBox.classList.remove("d-none", "alert-success");
     elements.resultBox.classList.add("alert-danger");
-    elements.resultBox.innerHTML = "Invalid UPI QR Code";
+    elements.resultBox.textContent = "Invalid UPI QR Code";
     elements.copyBtn.classList.add("d-none");
     elements.scanAgainBtn.classList.remove("d-none");
     setStatus("Invalid UPI QR Code", "error");
-  };
-
-  const resetResultBox = () => {
-    elements.resultBox.classList.add("d-none");
-    elements.resultBox.classList.remove("alert-danger", "alert-success");
-    elements.resultBox.innerHTML = '<div><strong>UPI ID:</strong> <span id="upiIdValue"></span></div>';
-    elements.upiIdValue = document.getElementById("upiIdValue");
   };
 
   const parseUpiId = (rawText) => {
@@ -70,13 +82,28 @@
     }
   };
 
-  const handleScanText = async (decodedText) => {
-    const upiId = parseUpiId(decodedText);
+  const stopScanner = async () => {
+    isScanning = false;
+    detectInProgress = false;
 
-    if (isScanning) {
-      await stopScanner();
+    if (scanRafId) {
+      cancelAnimationFrame(scanRafId);
+      scanRafId = null;
     }
 
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream = null;
+    }
+
+    video.pause();
+    video.srcObject = null;
+  };
+
+  const handleDecodedText = async (decodedText) => {
+    await stopScanner();
+
+    const upiId = parseUpiId(decodedText);
     if (upiId) {
       resetResultBox();
       showResult(upiId);
@@ -86,81 +113,103 @@
     showInvalid();
   };
 
-  const ensureScanner = () => {
-    if (!scanner) {
-      scanner = new Html5Qrcode("reader", { verbose: false });
+  const scanFrame = async (timestamp) => {
+    if (!isScanning) {
+      return;
     }
-    return scanner;
+
+    scanRafId = requestAnimationFrame((nextTs) => {
+      scanFrame(nextTs).catch(() => {
+        setStatus("Unable to process camera frame", "error");
+      });
+    });
+
+    if (detectInProgress || timestamp - lastDetectTime < 180 || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) {
+      return;
+    }
+
+    lastDetectTime = timestamp;
+    detectInProgress = true;
+
+    try {
+      const codes = await qrDetector.detect(video);
+      if (codes && codes.length > 0 && codes[0].rawValue) {
+        await handleDecodedText(codes[0].rawValue);
+      }
+    } finally {
+      detectInProgress = false;
+    }
   };
 
   const startScanner = async () => {
     resetResultBox();
     elements.copyBtn.classList.add("d-none");
     elements.scanAgainBtn.classList.add("d-none");
+
+    if (!supportsBarcodeDetector) {
+      setStatus("QR scanning is not supported on this browser offline.", "error");
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus("Camera API is unavailable on this browser.", "error");
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      setStatus("Camera needs HTTPS or localhost.", "error");
+      return;
+    }
+
+    await stopScanner();
     setStatus("Requesting camera permission...", "neutral");
 
     try {
-      const qrScanner = ensureScanner();
-      await qrScanner.start(
-        { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const size = Math.floor(minEdge * 0.8);
-            return { width: size, height: size };
-          },
-          aspectRatio: 1
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         },
-        (decodedText) => {
-          handleScanText(decodedText).catch(() => {
-            setStatus("Unable to process QR result", "error");
-          });
-        },
-        () => {
-          // ignore frame decode errors for smooth UX
-        }
-      );
+        audio: false
+      });
+
+      video.srcObject = cameraStream;
+      await video.play();
 
       isScanning = true;
       setStatus("Scanning in progress...", "neutral");
+      scanRafId = requestAnimationFrame((ts) => {
+        scanFrame(ts).catch(() => {
+          setStatus("Unable to start frame scan", "error");
+        });
+      });
     } catch (error) {
-      isScanning = false;
       const message = (error && error.message) || "Camera access failed";
       if (/permission|denied|notallowed/i.test(message)) {
         setStatus("Camera permission denied. Use Upload QR Image.", "error");
-      } else if (/secure|https/i.test(message)) {
-        setStatus("Camera needs HTTPS or localhost.", "error");
       } else {
         setStatus("Unable to start camera scanner", "error");
       }
     }
   };
 
-  const stopScanner = async () => {
-    if (!scanner || !isScanning) {
-      return;
-    }
+  const loadImageFromFile = (file) => new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
 
-    try {
-      await scanner.stop();
-      await scanner.clear();
-    } catch {
-      // ignore stop errors
-    } finally {
-      isScanning = false;
-    }
-  };
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
 
-  const clearAll = async () => {
-    await stopScanner();
-    extractedUpiId = "";
-    resetResultBox();
-    elements.copyBtn.classList.add("d-none");
-    elements.scanAgainBtn.classList.add("d-none");
-    elements.qrImageInput.value = "";
-    setStatus("Ready to scan", "neutral");
-  };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Invalid image"));
+    };
+
+    image.src = objectUrl;
+  });
 
   const scanFromImage = async (file) => {
     if (!file) {
@@ -170,13 +219,33 @@
     await stopScanner();
     resetResultBox();
     elements.copyBtn.classList.add("d-none");
+    elements.scanAgainBtn.classList.add("d-none");
+
+    if (!supportsBarcodeDetector) {
+      setStatus("Image QR scanning is not supported on this browser offline.", "error");
+      return;
+    }
+
     setStatus("Reading QR image...", "neutral");
 
     try {
-      const qrScanner = ensureScanner();
-      const decodedText = await qrScanner.scanFile(file, true);
-      const upiId = parseUpiId(decodedText);
+      let codes = [];
 
+      if (window.createImageBitmap) {
+        const bitmap = await createImageBitmap(file);
+        codes = await qrDetector.detect(bitmap);
+        bitmap.close();
+      } else {
+        const image = await loadImageFromFile(file);
+        codes = await qrDetector.detect(image);
+      }
+
+      if (!codes || !codes.length || !codes[0].rawValue) {
+        showInvalid();
+        return;
+      }
+
+      const upiId = parseUpiId(codes[0].rawValue);
       if (upiId) {
         showResult(upiId);
       } else {
@@ -205,13 +274,25 @@
     }
   };
 
+  const clearAll = async () => {
+    await stopScanner();
+    extractedUpiId = "";
+    resetResultBox();
+    elements.copyBtn.classList.add("d-none");
+    elements.scanAgainBtn.classList.add("d-none");
+    elements.qrImageInput.value = "";
+    setStatus("Ready to scan", "neutral");
+  };
+
   const registerServiceWorker = async () => {
-    if ("serviceWorker" in navigator) {
-      try {
-        await navigator.serviceWorker.register("service-worker.js");
-      } catch {
-        // keep app functional even if SW registration fails
-      }
+    if (!("serviceWorker" in navigator)) {
+      return;
+    }
+
+    try {
+      await navigator.serviceWorker.register("service-worker.js");
+    } catch {
+      // Keep app functional without SW.
     }
   };
 
@@ -237,7 +318,7 @@
       scanFromImage(file);
     });
 
-    window.addEventListener("beforeunload", () => {
+    window.addEventListener("pagehide", () => {
       stopScanner();
     });
 

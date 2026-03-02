@@ -32,11 +32,16 @@ body {
   min-height: 260px;
   overflow: hidden;
   background: #000;
+  border-color: #1e1e1e !important;
 }
 
-#reader video {
-  width: 100% !important;
-  height: auto !important;
+.camera-video {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  display: block;
+  object-fit: cover;
+  background: #000;
 }
 
 .status-neutral {
@@ -52,7 +57,8 @@ body {
 }
 
 @media (max-width: 480px) {
-  .reader-box {
+  .reader-box,
+  .camera-video {
     min-height: 230px;
   }
 }
