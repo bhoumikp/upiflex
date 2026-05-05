@@ -13,17 +13,15 @@
     qrImageInput: document.getElementById("qrImageInput")
   };
 
-  const supportsHtml5Qrcode = typeof window.Html5Qrcode !== "undefined";
-  const supportsBarcodeDetector = typeof window.BarcodeDetector !== "undefined";
-  const qrDetector = supportsBarcodeDetector ? new BarcodeDetector({ formats: ["qr_code"] }) : null;
-
   let html5Scanner = null;
   let cameraStream = null;
   let scanRafId = null;
   let isScanning = false;
+  let isStarting = false;
   let detectInProgress = false;
   let extractedUpiId = "";
   let lastDetectTime = 0;
+  let qrDetector = null;
 
   const video = document.createElement("video");
   video.setAttribute("playsinline", "true");
@@ -160,6 +158,14 @@
     detectInProgress = true;
 
     try {
+      if (!qrDetector && typeof window.BarcodeDetector !== "undefined") {
+        qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+      }
+
+      if (!qrDetector) {
+        throw new Error("BarcodeDetector not supported");
+      }
+
       const codes = await qrDetector.detect(video);
       if (codes && codes.length > 0 && codes[0].rawValue) {
         await handleDecodedText(codes[0].rawValue);
@@ -198,6 +204,10 @@
   };
 
   const startNativeCameraScan = async () => {
+    if (!qrDetector && typeof window.BarcodeDetector !== "undefined") {
+      qrDetector = new BarcodeDetector({ formats: ["qr_code"] });
+    }
+
     elements.reader.innerHTML = "";
     elements.reader.appendChild(video);
 
@@ -223,6 +233,8 @@
   };
 
   const startScanner = async () => {
+    if (isStarting) return;
+
     resetResultBox();
     elements.copyBtn.classList.add("d-none");
     elements.scanAgainBtn.classList.add("d-none");
@@ -237,10 +249,18 @@
       return;
     }
 
+    isStarting = true;
     await stopScanner();
+    
+    // Ensure reader is empty before starting any scanner
+    elements.reader.innerHTML = "";
+    
     setStatus("Requesting camera permission...", "neutral");
 
     try {
+      const supportsHtml5Qrcode = typeof window.Html5Qrcode !== "undefined";
+      const supportsBarcodeDetector = typeof window.BarcodeDetector !== "undefined";
+
       if (supportsHtml5Qrcode) {
         await startHtml5CameraScan();
       } else if (supportsBarcodeDetector) {
@@ -249,12 +269,16 @@
         setStatus("QR scanning not supported on this browser.", "error");
       }
     } catch (error) {
+      console.error("Scanner start error:", error);
       const message = (error && error.message) || "Camera access failed";
       if (/permission|denied|notallowed/i.test(message)) {
         setStatus("Camera permission denied. Use Upload QR Image.", "error");
       } else {
-        setStatus("Unable to start camera scanner", "error");
+        setStatus(`Error: ${message.slice(0, 40)}${message.length > 40 ? "..." : ""}`, "error");
       }
+      await stopScanner();
+    } finally {
+      isStarting = false;
     }
   };
 
