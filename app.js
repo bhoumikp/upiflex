@@ -10,6 +10,7 @@
     upiIdValue: document.getElementById("upiIdValue"),
     startScanBtn: document.getElementById("startScanBtn"),
     copyBtn: document.getElementById("copyBtn"),
+    openUpiBtn: document.getElementById("openUpiBtn"),
     scanAgainBtn: document.getElementById("scanAgainBtn"),
     saveUpiBtn: document.getElementById("saveUpiBtn"),
     clearBtn: document.getElementById("clearBtn"),
@@ -30,6 +31,7 @@
   let isStarting = false;
   let detectInProgress = false;
   let extractedUpiId = "";
+  let extractedUpiUri = "";
   let lastDetectTime = 0;
   let qrDetector = null;
   let savedUpis = [];
@@ -82,6 +84,15 @@
     return trimmed ? trimmed : null;
   };
 
+  const normalizeUpiUri = (value) => {
+    if (!value || typeof value !== "string") {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.toLowerCase().startsWith("upi://") ? trimmed : null;
+  };
+
   const normalizeLabel = (value) => {
     if (!value || typeof value !== "string") {
       return null;
@@ -89,6 +100,11 @@
 
     const trimmed = value.trim();
     return trimmed ? trimmed : null;
+  };
+
+  const buildFallbackUpiUri = (upiId) => {
+    const normalizedUpiId = normalizeUpiId(upiId);
+    return normalizedUpiId ? `upi://pay?pa=${encodeURIComponent(normalizedUpiId)}` : null;
   };
 
   const loadSavedUpis = () => {
@@ -110,6 +126,7 @@
         const upiId = normalizeUpiId(
           typeof item === "string" ? item : item && item.upiId
         );
+        const upiUri = normalizeUpiUri(typeof item === "object" && item ? item.upiUri : null);
         const label = normalizeLabel(typeof item === "object" && item ? item.label : null);
 
         if (!upiId || seen.has(upiId.toLowerCase())) {
@@ -119,6 +136,7 @@
         seen.add(upiId.toLowerCase());
         deduped.push({
           upiId,
+          upiUri: upiUri || buildFallbackUpiUri(upiId),
           label: label || "Unnamed UPI",
           savedAt: typeof item === "object" && item && typeof item.savedAt === "string"
             ? item.savedAt
@@ -156,6 +174,34 @@
       : "Enter a name for this UPI ID so you can remember who it belongs to";
     const value = window.prompt(message, existingLabel);
     return normalizeLabel(value);
+  };
+
+  const openUpiApp = (upiUri) => {
+    const normalizedUpiUri = normalizeUpiUri(upiUri);
+    if (!normalizedUpiUri) {
+      setStatus("No UPI app link available", "error");
+      return false;
+    }
+
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = normalizedUpiUri;
+      anchor.rel = "noopener";
+      anchor.target = "_self";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      return true;
+    } catch {
+      try {
+        window.location.href = normalizedUpiUri;
+        return true;
+      } catch {
+        setStatus("Unable to open UPI app", "error");
+        return false;
+      }
+    }
   };
 
   const copyText = async (text) => {
@@ -254,6 +300,12 @@
       copyButton.dataset.action = "copy";
       copyButton.textContent = "Copy";
 
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.className = "btn btn-sm btn-outline-primary";
+      openButton.dataset.action = "open";
+      openButton.textContent = "Open in UPI App";
+
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "btn btn-sm btn-outline-danger";
@@ -267,6 +319,7 @@
       renameButton.textContent = "Rename";
 
       actions.appendChild(copyButton);
+      actions.appendChild(openButton);
       actions.appendChild(renameButton);
       actions.appendChild(deleteButton);
 
@@ -279,11 +332,13 @@
     updateSavedUpiSectionState();
   };
 
-  const upsertSavedUpi = (upiId) => {
+  const upsertSavedUpi = (upiId, upiUri) => {
     const normalizedUpiId = normalizeUpiId(upiId);
     if (!normalizedUpiId) {
       return { saved: false, duplicated: false };
     }
+
+    const normalizedUpiUri = normalizeUpiUri(upiUri) || buildFallbackUpiUri(normalizedUpiId);
 
     const previousSavedUpis = savedUpis.slice();
     const now = new Date().toISOString();
@@ -305,6 +360,7 @@
 
     savedUpis.unshift({
       upiId: normalizedUpiId,
+      upiUri: normalizedUpiUri,
       label,
       savedAt: now
     });
@@ -391,23 +447,27 @@
     return true;
   };
 
-  const showResult = (upiId) => {
-    extractedUpiId = upiId;
-    elements.upiIdValue.textContent = upiId;
+  const showResult = ({ upiId, upiUri }) => {
+    extractedUpiId = upiId || "";
+    extractedUpiUri = normalizeUpiUri(upiUri) || buildFallbackUpiUri(upiId);
+    elements.upiIdValue.textContent = upiId || "UPI payment link ready";
     elements.resultBox.classList.remove("d-none", "alert-danger");
     elements.resultBox.classList.add("alert-success");
-    elements.copyBtn.classList.remove("d-none");
+    elements.copyBtn.classList.toggle("d-none", !upiId);
+    elements.openUpiBtn.classList.toggle("d-none", !extractedUpiUri);
     elements.scanAgainBtn.classList.remove("d-none");
-    elements.saveUpiBtn.classList.remove("d-none");
+    elements.saveUpiBtn.classList.toggle("d-none", !upiId);
     setStatus("UPI QR detected", "success");
   };
 
   const showInvalid = () => {
     extractedUpiId = "";
+    extractedUpiUri = "";
     elements.resultBox.classList.remove("d-none", "alert-success");
     elements.resultBox.classList.add("alert-danger");
     elements.resultBox.textContent = "Invalid UPI QR Code";
     elements.copyBtn.classList.add("d-none");
+    elements.openUpiBtn.classList.add("d-none");
     elements.scanAgainBtn.classList.remove("d-none");
     elements.saveUpiBtn.classList.add("d-none");
     setStatus("Invalid UPI QR Code", "error");
@@ -435,10 +495,11 @@
   const handleDecodedText = async (decodedText) => {
     await stopScanner();
 
+    const upiUri = normalizeUpiUri(decodedText);
     const upiId = parseUpiId(decodedText);
-    if (upiId) {
+    if (upiUri || upiId) {
       resetResultBox();
-      showResult(upiId);
+      showResult({ upiId, upiUri });
       return;
     }
 
@@ -615,6 +676,7 @@
 
     resetResultBox();
     elements.copyBtn.classList.add("d-none");
+    elements.openUpiBtn.classList.add("d-none");
     elements.scanAgainBtn.classList.add("d-none");
     elements.saveUpiBtn.classList.add("d-none");
 
@@ -685,6 +747,7 @@
     await stopScanner();
     resetResultBox();
     elements.copyBtn.classList.add("d-none");
+    elements.openUpiBtn.classList.add("d-none");
     elements.scanAgainBtn.classList.add("d-none");
     elements.saveUpiBtn.classList.add("d-none");
     setStatus("Reading QR image...", "neutral");
@@ -721,9 +784,10 @@
         return;
       }
 
+      const upiUri = normalizeUpiUri(decodedText);
       const upiId = parseUpiId(decodedText);
-      if (upiId) {
-        showResult(upiId);
+      if (upiUri || upiId) {
+        showResult({ upiId, upiUri });
       } else {
         showInvalid();
       }
@@ -749,7 +813,7 @@
       return;
     }
 
-    const result = upsertSavedUpi(extractedUpiId);
+    const result = upsertSavedUpi(extractedUpiId, extractedUpiUri);
     if (!result.saved) {
       if (!result.canceled) {
         setStatus("Unable to save UPI ID", "error");
@@ -766,8 +830,10 @@
   const clearAll = async () => {
     await stopScanner();
     extractedUpiId = "";
+    extractedUpiUri = "";
     resetResultBox();
     elements.copyBtn.classList.add("d-none");
+    elements.openUpiBtn.classList.add("d-none");
     elements.scanAgainBtn.classList.add("d-none");
     elements.saveUpiBtn.classList.add("d-none");
     elements.qrImageInput.value = "";
@@ -804,6 +870,15 @@
         const copied = await copyText(upiId);
         if (copied) {
           setStatus("Saved UPI ID copied", "success");
+        }
+        return;
+      }
+
+      if (action === "open") {
+        const entry = savedUpis.find((item) => item.upiId.toLowerCase() === upiId.toLowerCase());
+        const uri = entry ? (entry.upiUri || buildFallbackUpiUri(entry.upiId)) : buildFallbackUpiUri(upiId);
+        if (uri) {
+          openUpiApp(uri);
         }
         return;
       }
@@ -849,6 +924,12 @@
 
     elements.copyBtn.addEventListener("click", () => {
       copyUpiId();
+    });
+
+    elements.openUpiBtn.addEventListener("click", () => {
+      if (extractedUpiUri) {
+        openUpiApp(extractedUpiUri);
+      }
     });
 
     elements.saveUpiBtn.addEventListener("click", () => {

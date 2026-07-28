@@ -1,4 +1,4 @@
-const CACHE_NAME = "upi-qr-extractor-v5";
+const CACHE_NAME = "upi-qr-extractor-v6";
 const OFFLINE_URL = "offline.html";
 
 const ASSETS = [
