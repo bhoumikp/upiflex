@@ -3,6 +3,9 @@
   --success: #198754;
   --error: #dc3545;
   --neutral: #6c757d;
+  --panel-bg: #ffffff;
+  --panel-border: rgba(13, 110, 253, 0.12);
+  --saved-item-bg: #f8fbff;
 }
 
 html,
@@ -24,7 +27,8 @@ body {
 
 .app-card {
   border-radius: 1rem;
-  background: #fff;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
 }
 
 .reader-box {
@@ -56,9 +60,54 @@ body {
   color: var(--error);
 }
 
+.saved-upi-section {
+  border-top: 1px solid rgba(13, 110, 253, 0.12);
+  padding-top: 1rem;
+}
+
+.saved-upi-empty {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.saved-upi-item {
+  background: var(--saved-item-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.saved-upi-item__content {
+  min-width: 0;
+}
+
+.saved-upi-item__upi {
+  font-weight: 600;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.saved-upi-item__label {
+  color: #0d6efd;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+
+.saved-upi-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 @media (max-width: 480px) {
   .reader-box,
   .camera-video {
     min-height: 230px;
+  }
+
+  .saved-upi-item {
+    padding: 0.875rem;
   }
 }

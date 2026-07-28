@@ -17,37 +17,56 @@
 </head>
 <body>
   <main class="app-shell container py-4">
-    <section class="row justify-content-center">
-      <div class="col-12 col-sm-10 col-md-8 col-lg-5">
-        <article class="card shadow-sm border-0 app-card">
-          <div class="card-body p-4">
-            <header class="text-center mb-3">
-              <img src="icons/icon-192.png" alt="UPI QR Extractor" width="56" height="56" class="mb-2 rounded-3">
-              <h1 class="h4 mb-1">UPI QR Extractor</h1>
-              <p class="text-muted mb-0">Scan UPI QR and copy UPI ID</p>
-            </header>
+	<section class="row justify-content-center">
+	  <div class="col-12 col-sm-10 col-md-8 col-lg-5">
+		<article class="card shadow-sm border-0 app-card">
+		  <div class="card-body p-4">
+			<header class="text-center mb-3">
+			  <img src="icons/icon-192.png" alt="UPI QR Extractor" width="56" height="56" class="mb-2 rounded-3">
+			  <h1 class="h4 mb-1">UPI QR Extractor</h1>
+			  <p class="text-muted mb-0">Scan UPI QR, copy IDs, and save payees for later</p>
+			</header>
 
-            <p id="statusMessage" class="small text-center fw-semibold status-neutral mb-3">Ready to scan</p>
+			<p id="statusMessage" class="small text-center fw-semibold status-neutral mb-3">Ready to scan</p>
 
-            <div id="reader" class="reader-box rounded-3 border mb-3" aria-label="QR scanner preview"></div>
+			<div id="scanner">
+				<div id="reader" class="reader-box rounded-3 border mb-3" aria-label="QR scanner preview"></div>
+	
+				<div id="resultBox" class="alert d-none py-2 mb-3" role="status">
+				  <div><strong>UPI ID:</strong> <span id="upiIdValue"></span></div>
+				</div>
+	
+				<div class="d-grid gap-2">
+				  <button id="startScanBtn" type="button" class="btn btn-primary">Scan from Camera</button>
+				  <label for="qrImageInput" class="btn btn-outline-primary mb-0">Upload QR Image</label>
+				  <input id="qrImageInput" type="file" accept="image/*" class="d-none" aria-label="Upload QR image">
+	
+				  <button id="copyBtn" type="button" class="btn btn-success d-none">Copy UPI ID</button>
+				  <button id="scanAgainBtn" type="button" class="btn btn-outline-secondary d-none">Scan Again</button>
+				  <button id="saveUpiBtn" type="button" class="btn btn-outline-secondary d-none">Save with Name</button>
+				  <button id="clearBtn" type="button" class="btn btn-outline-danger">Clear</button>
+				</div>
+			</div>
 
-            <div id="resultBox" class="alert d-none py-2 mb-3" role="status">
-              <div><strong>UPI ID:</strong> <span id="upiIdValue"></span></div>
-            </div>
+			<section id="savedUpisSection" class="saved-upi-section mt-4">
+			  <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+				<div>
+				  <h2 class="h6 mb-1">Saved UPI IDs</h2>
+				  <p class="text-muted small mb-0">Quick access to payees you want to reuse without rescanning.</p>
+				</div>
+				<button id="clearSavedUpisBtn" type="button" class="btn btn-sm btn-outline-danger d-none">Clear All</button>
+			  </div>
 
-            <div class="d-grid gap-2">
-              <button id="startScanBtn" type="button" class="btn btn-primary">Scan from Camera</button>
-              <label for="qrImageInput" class="btn btn-outline-primary mb-0">Upload QR Image</label>
-              <input id="qrImageInput" type="file" accept="image/*" class="d-none" aria-label="Upload QR image">
+			  <div id="savedUpisEmpty" class="saved-upi-empty border rounded-3 p-3 text-center text-muted">
+				No saved UPI IDs yet.
+			  </div>
 
-              <button id="copyBtn" type="button" class="btn btn-success d-none">Copy UPI ID</button>
-              <button id="scanAgainBtn" type="button" class="btn btn-outline-secondary d-none">Scan Again</button>
-              <button id="clearBtn" type="button" class="btn btn-outline-danger">Clear</button>
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
+			  <div id="savedUpisList" class="saved-upi-list d-grid gap-2 mt-3 d-none"></div>
+			</section>
+		  </div>
+		</article>
+	  </div>
+	</section>
   </main>
 
   <script src="vendor/html5-qrcode.min.js" defer></script>
