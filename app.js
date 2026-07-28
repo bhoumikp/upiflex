@@ -36,6 +36,7 @@
 
   const video = document.createElement("video");
   video.setAttribute("playsinline", "true");
+  video.setAttribute("webkit-playsinline", "true");
   video.setAttribute("autoplay", "true");
   video.setAttribute("muted", "true");
   video.className = "camera-video";
@@ -173,6 +174,26 @@
     } catch {
       setStatus("Unable to copy UPI ID", "error");
       return false;
+    }
+  };
+
+  const getPreferredHtml5CameraSource = async () => {
+    try {
+      const cameras = await Html5Qrcode.getCameras();
+      if (!cameras || !cameras.length) {
+        return { facingMode: { ideal: "environment" } };
+      }
+
+      const preferredCamera =
+        cameras.find((camera) => /back|rear|environment/i.test(camera.label || "")) ||
+        cameras.find((camera) => !/front|user/i.test(camera.label || "")) ||
+        cameras[0];
+
+      return preferredCamera && preferredCamera.id
+        ? preferredCamera.id
+        : { facingMode: { ideal: "environment" } };
+    } catch {
+      return { facingMode: { ideal: "environment" } };
     }
   };
 
@@ -511,30 +532,53 @@
 
   const startHtml5CameraScan = async () => {
     const scanner = ensureHtml5Scanner();
+    const cameraSources = [];
+    const preferredCameraSource = await getPreferredHtml5CameraSource();
+    cameraSources.push(preferredCameraSource);
+    cameraSources.push({ facingMode: { ideal: "environment" } });
+    cameraSources.push({ facingMode: "environment" });
 
-    await scanner.start(
-      { facingMode: "environment" },
-      {
-        fps: 10,
-        qrbox: (vw, vh) => {
-          const minEdge = Math.min(vw, vh);
-          const size = Math.floor(minEdge * 0.8);
-          return { width: size, height: size };
-        },
-        aspectRatio: 1
+    const config = {
+      fps: 10,
+      qrbox: (vw, vh) => {
+        const minEdge = Math.min(vw, vh);
+        const size = Math.floor(minEdge * 0.8);
+        return { width: size, height: size };
       },
-      (decodedText) => {
-        handleDecodedText(decodedText).catch(() => {
-          setStatus("Unable to process QR result", "error");
-        });
-      },
-      () => {
-        // ignore frame decode errors for smooth UX
+      aspectRatio: 4 / 3,
+      disableFlip: true
+    };
+
+    let lastError = null;
+    for (const cameraSource of cameraSources) {
+      try {
+        await scanner.start(
+          cameraSource,
+          config,
+          (decodedText) => {
+            handleDecodedText(decodedText).catch(() => {
+              setStatus("Unable to process QR result", "error");
+            });
+          },
+          () => {
+            // ignore frame decode errors for smooth UX
+          }
+        );
+
+        isScanning = true;
+        setStatus("Scanning in progress...", "neutral");
+        return;
+      } catch (error) {
+        lastError = error;
+        try {
+          await scanner.clear();
+        } catch {
+          // ignore and continue with the next source
+        }
       }
-    );
+    }
 
-    isScanning = true;
-    setStatus("Scanning in progress...", "neutral");
+    throw lastError || new Error("Unable to start scanner");
   };
 
   const startNativeCameraScan = async () => {
@@ -602,7 +646,9 @@
       }
     } catch (error) {
       console.error("Scanner start error:", error);
-      const message = (error && error.message) || "Camera access failed";
+      const message = error && error.name
+        ? `${error.name}${error.message ? `: ${error.message}` : ""}`
+        : (error && error.message) || "Camera access failed";
       if (/permission|denied|notallowed/i.test(message)) {
         setStatus("Camera permission denied. Use Upload QR Image.", "error");
       } else {
